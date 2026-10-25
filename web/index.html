@@ -1,0 +1,87 @@
+<title>UC3M Course Planner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Plan an exchange semester at UC3M's School of Engineering: browse every course, score them, and build clash-free timetables.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="styles.css">
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>UC3M Course Planner</h1>
+      <p class="sub" id="intro"></p>
+      <div class="keydates" id="keydates"></div>
+    </div>
+    <div class="meter"><span class="lbl">Target</span><input id="target" type="number" min="6" max="60" step="1" value="30" style="width:64px"><span class="lbl">ECTS · max</span><input id="maxE" type="number" min="6" max="66" step="1" value="33" style="width:64px"></div>
+  </header>
+
+  <section class="panel" aria-label="Course map">
+    <div class="hd"><div class="row" style="justify-content:space-between"><h2>Course map</h2><span class="lbl">Each dot is a course · click to open</span></div></div>
+    <div class="mapwrap">
+      <svg id="map" viewBox="0 0 760 330" role="img" aria-label="Courses plotted by maths load and hands-on share"></svg>
+      <div class="maplegend">
+        <div><h3>Colour: AI &amp; software focus</h3><div class="ramp"><span style="background:var(--seq0)"></span><span style="background:var(--seq1)"></span><span style="background:var(--seq2)"></span><span style="background:var(--seq3)"></span><span style="background:var(--seq4)"></span></div><div class="row" style="justify-content:space-between;width:160px"><span>low</span><span>high</span></div></div>
+        <div><h3>Rings</h3>Thick ring: on your shortlist. Dashed ring: recommended by past exchange students.</div>
+        <div>Scores run from 1 to 5 relative to the other courses. They're estimated from each syllabus (prerequisites, contents, department, assessment) and the share of lab hours in the timetable. Open a course to check its syllabus.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="main">
+    <section class="panel" aria-label="Course catalog">
+      <div class="hd">
+        <div class="row" style="justify-content:space-between"><h2>Catalog</h2><span class="lbl" id="count"></span></div>
+        <div class="row"><input id="q" type="search" placeholder="Search name (EN/ES), code or topic" aria-label="Search courses"></div>
+        <div class="row">
+          <select id="deg" aria-label="Degree"><option value="">All degrees</option></select>
+          <select id="lang" aria-label="Language"><option value="English">Taught in English</option><option value="">Any language</option><option value="Spanish">Taught in Spanish</option></select>
+          <select id="sort" aria-label="Sort"><option value="match">Sort: best match</option><option value="a">Sort: most AI &amp; software</option><option value="h">Sort: most hands-on</option><option value="m">Sort: lightest maths</option><option value="ex">Sort: smallest final exam</option><option value="hrs">Sort: fewest hours</option><option value="n">Sort: name</option></select>
+        </div>
+        <div class="row" id="years"></div>
+        <div class="row">
+          <label class="chip"><input type="checkbox" id="maxM"> Maths ≤ 3</label>
+          <label class="chip"><input type="checkbox" id="noEx"> Final exam ≤ 50%</label>
+          <label class="chip"><input type="checkbox" id="hideSkills" checked> Hide skills courses</label>
+          <label class="chip"><input type="checkbox" id="fits"> Fits the current plan</label>
+          <label class="chip"><input type="checkbox" id="mine"> My shortlist</label>
+        </div>
+      </div>
+      <div class="list" id="list"></div>
+    </section>
+
+    <div class="right">
+      <section class="panel" aria-label="Shortlist and preferences">
+        <div class="hd"><div class="row" style="justify-content:space-between"><h2>Shortlist</h2><div class="row"><span class="lbl" id="sCount"></span><button class="ghostbtn" id="clear">Clear</button></div></div></div>
+        <div class="short" id="short"></div>
+        <div class="model">
+          <div class="row" style="justify-content:space-between"><h3 style="margin:0">What matters to you</h3>
+            <div class="tabs" id="presets"><button data-preset="balanced">Balanced</button><button data-preset="focus">Interest first</button><button data-preset="compact">Compact timetable</button></div></div>
+          <div class="sliders" id="sliders"></div>
+        </div>
+        <div class="cons">
+          <div><span class="lbl">Earliest start</span><input id="early" type="time" value="09:00" step="900"></div>
+          <div><span class="lbl">Latest end</span><input id="late" type="time" value="21:00" step="900"></div>
+          <div><span class="lbl">Keep these days free</span><div class="row" id="daysOff"></div></div>
+          <div><label class="chip"><input type="checkbox" id="auto" checked> Let the optimiser suggest courses</label></div>
+          <div><button class="primary" id="go">Build plans</button></div>
+        </div>
+      </section>
+
+      <section class="panel" aria-label="Plans">
+        <div class="hd">
+          <div class="row" style="justify-content:space-between"><h2>Plans</h2><div class="row"><label class="chip"><input type="checkbox" id="ghost"> Show other groups</label><button id="copy">Copy plan</button></div></div>
+          <div class="tabs" id="tabs"></div>
+          <div class="status" id="status" role="status"></div>
+        </div>
+        <div class="plan" id="plan"></div>
+        <p class="note" id="note"></p>
+      </section>
+    </div>
+  </div>
+</div>
+<aside class="drawer" id="drawer" hidden aria-label="Course details"></aside>
+<div class="toast" id="toast" hidden></div>
+
+<script src="dataset.js"></script>
+<script src="engine.js"></script>
+<script src="app.js"></script>
