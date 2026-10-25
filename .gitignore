@@ -1,0 +1,19 @@
+# crawl cache, full syllabus text and old prototypes (regenerable, and UC3M's content)
+.cache/
+# build output (CI builds it from data/dataset.json)
+dist/
+
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+node_modules/
+
+# local editor / agent settings
+.claude/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
