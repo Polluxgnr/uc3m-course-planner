@@ -1,7 +1,7 @@
 # Student guide
 
 A walkthrough for exchange students choosing courses at UC3M's School of Engineering (EPS, Leganés
-campus). Nothing to install: open the planner link in a browser. Your choices are saved in your browser.
+campus). Nothing to install: open **https://polluxgnr.github.io/uc3m-course-planner/** in a browser. Your choices are saved in your browser.
 
 ## 1. Look around: the course map
 

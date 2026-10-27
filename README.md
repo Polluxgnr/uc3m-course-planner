@@ -18,6 +18,8 @@ This project pulls all of it together.
 It ships as a **single HTML file** with no backend and no install. The optimiser runs in a Web Worker and
 finishes a full search in a few seconds.
 
+**Open the planner: https://polluxgnr.github.io/uc3m-course-planner/**
+
 > Using it to pick your courses? Read the **[student guide](docs/GUIDE.md)**.
 
 ## How it works
