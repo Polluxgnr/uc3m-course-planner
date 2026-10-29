@@ -2,113 +2,156 @@
 
 [![CI](https://github.com/Polluxgnr/uc3m-course-planner/actions/workflows/ci.yml/badge.svg)](https://github.com/Polluxgnr/uc3m-course-planner/actions/workflows/ci.yml)
 
+**Open it: https://polluxgnr.github.io/uc3m-course-planner/** · [Student guide](docs/GUIDE.md) · [How the model works](docs/MODEL.md)
+
 Choosing courses for an exchange semester at **Universidad Carlos III de Madrid** means juggling 19 degree
 pages, a separate timetable site, hundreds of syllabi and a Learning Agreement that needs fallbacks.
-This project pulls all of it together.
+This project pulls all of it into one page, then helps you decide.
 
-- **Scrapes** every bachelor open to exchange students at the School of Engineering (EPS, Leganés): the
-  study plans, every teaching group's timetable (week by week) and each course's syllabus.
-- **Scores** every course from its syllabus: maths load, hands-on share, AI and software focus, and the
-  final-exam share of the grade.
-- **Optimises**: given your shortlist and what matters to you, it searches every clash-free combination
-  that reaches your ECTS target and returns the three best plans, each with a score breakdown.
-- **Plans for things going wrong**: for every course in a plan, it lists the other groups and replacement
-  courses that still fit, ranked by the plan score after the swap.
+![Overview: hero, course catalog and the course map](docs/img/overview.png)
 
-It ships as a **single HTML file** with no backend and no install. The optimiser runs in a Web Worker and
-finishes a full search in a few seconds.
+## What it does
 
-**Open the planner: https://polluxgnr.github.io/uc3m-course-planner/**
+- **Knows the whole semester.** It scrapes every bachelor open to exchange students at the School of
+  Engineering (Leganés): study plans, every teaching group's sessions week by week, and each syllabus.
+  That's 265 courses and 650 groups.
+- **Reads the syllabi for you.** Every course is scored for maths load, hands-on work, and AI and software
+  focus, and tagged with its final-exam share and deadline weeks. Optional AI summaries say what you'll
+  learn and what it's useful for.
+- **Finds the best timetable, provably.** An exact branch-and-bound optimiser searches every clash-free
+  combination that reaches your ECTS target and returns the three best plans for *your* weights. The page
+  says when the search is exhaustive.
+- **Plans for things going wrong.** Every course in a plan comes with ranked fallbacks: other groups, or
+  replacement courses that still fit, each scored by the whole plan after the swap.
+- **Three ways in:**
+  - **Plan it for me:** seven quick questions, no account or key, and a drafted semester with a
+    plain-language reason for every pick.
+  - **AI advisor:** a chat that searches the catalog, reads syllabi, edits your shortlist and runs the
+    optimiser through tool calls. Bring your own OpenRouter key.
+  - **Do it yourself:** mark courses Must, Want or Backup and tune nine sliders.
 
-> Using it to pick your courses? Read the **[student guide](docs/GUIDE.md)**.
+![Plan view: score breakdown, plan profiles radar, comparison and fallbacks](docs/img/plan.png)
+
+## Visualisations
+
+| View | Answers |
+| --- | --- |
+| Course map (maths × hands-on, coloured by AI focus, hover cards) | Where are the practical, low-maths, AI-heavy courses? |
+| "When your shortlist meets" heat map | Which weekdays can I realistically keep free? |
+| Score breakdown and plan-profile radar | Why does plan A beat plan B, criterion by criterion? |
+| Plan comparison table | Which plan wins on hours, exams, maths, free days? |
+| Week grid (weekly lectures solid, labs hatched, other groups dashed) | What does my week actually look like? |
+| Semester strip | Which weeks are heavy, when are the deadlines, how much rides on finals? |
+| Side-by-side course compare | Machine Learning or Artificial Intelligence? |
+
+<p align="center"><img src="docs/img/week.png" width="640" alt="Week view of a plan with Friday free"></p>
 
 ## How it works
 
 ```mermaid
 flowchart LR
-  A[uc3m.es degree pages] -->|study plans: ECTS, year, language| S[scrape]
-  B[horarios-web timetable site] -->|groups, sessions, week ranges| S
-  C[syllabi / fichas] -->|contents, prerequisites, assessment| Y[syllabi]
+  A[uc3m.es degree pages] -->|study plans| S[scrape]
+  B[timetable site] -->|groups, sessions, weeks| S
+  C[syllabi] -->|contents, prerequisites, assessment| Y[syllabi]
   S --> D[dataset builder]
   Y --> D
-  D -->|merge variants, score, flag| J[(data/dataset.json)]
+  D -->|merge, score, flag| J[(data/dataset.json)]
+  J --> I[insights: LLM summaries]
+  I --> K[(data/insights.json)]
   J --> W[site bundler]
-  E[web/: engine.js · app.js · styles.css] --> W
-  W --> H[dist/index.html]
+  K --> W
+  E[web/: engine · tools · app · advisor] --> W
+  W --> H[single-file site]
 ```
 
 | Piece | What it does |
 | --- | --- |
 | `src/uc3m_planner/parsers.py` | Pure HTML → data parsers, including the timetable grid (rowspans and colspans → weekday and time) |
-| `src/uc3m_planner/http.py` | Cached, retrying, concurrent fetcher; decodes the site's mislabelled encodings correctly |
-| `src/uc3m_planner/dataset.py` | Merges the same course across degrees, keeps the teaching language per group, converts dates to teaching weeks |
+| `src/uc3m_planner/http.py` | Cached, retrying, concurrent fetcher that decodes the site's mislabelled encodings |
+| `src/uc3m_planner/dataset.py` | Merges the same course across degrees, keeps the teaching language per group, maps dates to teaching weeks |
 | `src/uc3m_planner/scoring.py` | Bilingual keyword heuristics, rank-scaled to 1–5 across the catalog |
-| `web/engine.js` | Scoring model plus a branch-and-bound optimiser over (course, group) choices. Pure functions that run in the page, a Web Worker and Node tests |
-| `web/app.js` | The interface: course map, catalog, shortlist, weights, plans, week grid and semester timeline |
+| `src/uc3m_planner/insights.py` | Optional LLM pass: validated JSON summaries per course, cached by input hash |
+| `web/engine.js` | Scoring model plus branch-and-bound optimiser. Pure functions that run in the page, a Web Worker and Node tests |
+| `web/tools.js` | The advisor's tools (search, details, shortlist, preferences, optimise) and the wizard's logic, all tested |
+| `web/advisor.js` | Chat client with a tool-calling loop over OpenRouter |
+| `web/app.js` | The interface and its visualisations |
 
-The model and the search are described in **[docs/MODEL.md](docs/MODEL.md)**. In short:
+**The model** ([details](docs/MODEL.md)):
 
-- **Score:** a plan's score is a weighted average of nine criteria, each scaled to 0–1: AI and software
-  focus, hands-on work, maths load, continuous assessment, compact week, contact hours, dead time between
-  classes, number of courses, and your own picks. You set the weights.
-- **Hard constraints:** the ECTS window, Must courses, the hours you're willing to be on campus, days you
-  keep free, and the teaching language.
-- **Search:** clashes and idle time are computed on 64-bit masks of 15-minute bins per week-day. The search
-  explores about 150k partial plans per second, and the bound never prunes a plan that could make the top 3.
-  The page tells you whether the search was exhaustive or stopped at its time limit.
+- **Score:** a plan's score is a weighted average of nine criteria, each scaled to 0–1: AI and software,
+  hands-on, maths load, continuous assessment, compact week, contact hours, dead time, number of courses,
+  and your picks.
+- **Hard constraints:** the ECTS window, Must courses, the hours you'll be on campus, days kept free, and
+  the teaching language.
+- **Search:** clashes and idle time are computed on 64-bit masks of 15-minute bins per week-day, at roughly
+  150k partial plans per second. The bound is optimistic per criterion, so it never prunes a plan that
+  could make the top three.
+
+**The AI split:** the language model decides *what to aim for* (interests, trade-offs, explanations). The
+optimiser decides *what is feasible*. So the advisor can't recommend a plan that clashes or misses 30 ECTS.
 
 ## Development
 
-Requires Python 3.10+ and Node 18+ (Node is only needed for the engine tests).
+Requires Python 3.10+ and Node 18+.
 
 ```bash
 pip install -e ".[dev]"
 ```
 
 ```bash
-python -m uc3m_planner all          # scrape (~10 min, cached) → syllabi → dataset → site
+python -m uc3m_planner all
 ```
+
+That runs scrape (about 10 min, cached), syllabi, dataset and site in order. Other commands:
 
 ```bash
-python -m uc3m_planner site         # rebuild dist/ from the committed dataset only
+python -m uc3m_planner site
 ```
 
-Open `dist/index.html` in a browser, or serve it with `python -m http.server -d dist`.
+Rebuilds `dist/` from the committed data only. Open `dist/index.html`, or serve it with
+`python -m http.server -d dist`.
 
 ```bash
-pytest -q && ruff check src tests && node --test web/tests/engine.test.mjs
+python -m uc3m_planner insights
 ```
 
-Each step can run on its own: `scrape`, `syllabi`, `dataset`, `site`. Add `--refresh` to bypass the HTTP
-cache in `.cache/`. Only `data/dataset.json` is versioned: the crawl output and the full syllabus text stay local.
+Generates the AI course summaries. Put `OPENROUTER_API_KEY` in `.env` first (see `.env.example`).
 
-### Updating for another year or semester
+```bash
+pytest -q && ruff check src tests && node --test web/tests/engine.test.mjs web/tests/tools.test.mjs
+```
 
-Everything that changes yearly lives in [`src/uc3m_planner/config.py`](src/uc3m_planner/config.py):
-academic year, semester, campus, the list of degrees, timetable plans the degree pages forget to link,
-and the semester calendar. Update it, then run `python -m uc3m_planner all --refresh`.
+Each step runs on its own: `scrape`, `syllabi`, `dataset`, `insights`, `site`. `--refresh` bypasses the HTTP
+cache in `.cache/`. Only `data/` is versioned: the crawl output and full syllabus text stay local.
+
+**Next year:** everything that changes yearly lives in [`config.py`](src/uc3m_planner/config.py): year,
+semester, campus, degrees, the timetable plans the degree pages forget to link, and the calendar.
 
 ### Engineering notes
 
-- **Tests:** parsers are tested against minimal HTML shaped like the real pages. The engine is tested on
-  synthetic catalogues with exact expectations. On the real data, a test checks that the optimiser's best
-  plan equals a brute-force search, and that the incremental scoring used inside the search matches the
-  reference metrics.
-- **CI** runs ruff, pytest and the Node engine tests, then builds the site. Another workflow deploys it to
-  GitHub Pages when the repository is public.
-- **Responsiveness:** the optimiser runs in a Web Worker built from the inlined engine source, and stale
-  results are dropped when you change something mid-search.
+- **Tests** (Python and Node):
+  - parsers against minimal HTML shaped like the real pages;
+  - the engine on synthetic catalogues, and on real data against a brute-force search;
+  - the incremental scoring inside the search against the reference metrics;
+  - every advisor tool, and the wizard's picks;
+  - insight parsing and caching with a fake LLM client.
+- **CI** runs ruff, pytest and the Node tests, then builds the site. Pages deploys on every push to `main`.
+- **Responsiveness:**
+  - the search runs in a Web Worker built from the inlined engine source;
+  - stale results are dropped when you change something mid-search;
+  - a watchdog falls back to the main thread if the worker never answers.
+- **Keys and privacy:**
+  - the advisor's key lives in the visitor's own browser and goes only to openrouter.ai;
+  - the insights key lives in a git-ignored `.env`;
+  - the site has no backend and stores nothing.
 
 ## Limitations
 
-- **Course scores are heuristics,** not ground truth. They are good for sorting a 265-course catalog, but
-  read the syllabus before you commit.
-- **Teaching language per group** is inferred from the degree each group belongs to. UC3M doesn't publish
-  it per group.
-- **Exam dates** for the semester aren't in the data. The planner uses the final-exam share and the
-  milestone weeks named in each syllabus.
-- **Eligibility:** whether a course is open to you as an exchange student is up to UC3M and your home
-  university.
+- **Course scores and AI summaries are estimates** from syllabus text. Use them to narrow down, then read the syllabus.
+- **Teaching language per group** is inferred from the degree each group belongs to. UC3M doesn't publish it.
+- **Exam dates** for the semester weren't published when the data was fetched. The final-exam share and
+  syllabus deadline weeks are used instead.
+- **Eligibility** of a course for exchange students is up to UC3M and your home university.
 
 Not affiliated with UC3M. Course data comes from UC3M's public pages; check them before you enrol.
 

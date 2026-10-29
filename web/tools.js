@@ -196,25 +196,46 @@
   }
 
   // ---------------------------------------------------------------- no-key wizard
-  /**
-   * answers = {topics: [keys of TOPICS], maths: "avoid"|"ok"|"love", exams: "continuous"|"any"|"finals",
-   *            schedule: "compact"|"balanced"|"any", english: bool}
-   * Returns weights, constraints and a shortlist proposal (4 Want + 6 Backup) ranked by topic relevance x match.
-   */
-  function planForMe(answers, model, E, keep = {}) {
+  const WINDOWS = {late: {early: "10:45", late: "21:00"}, day: {early: "09:00", late: "19:00"}, any: {early: "09:00", late: "21:00"}};
+  const DAYOFF = {fri: [4], mon: [0], none: []};
+
+  /** Weights and hard constraints implied by the wizard answers. */
+  function settingsFor(answers) {
     const w = {ai: 2, hands: 3, maths: 3, exam: 2, days: 3, hours: 3, gaps: 3, load: 2, prefs: 4};
     const topics = (answers.topics || []).filter((k) => TOPICS[k]);
-    if (topics.includes("ai") || topics.includes("software") || topics.includes("data")) w.ai = 5;
+    if (topics.some((t) => ["ai", "software", "data"].includes(t))) w.ai = 5;
     w.maths = {avoid: 5, ok: 2, love: 0}[answers.maths] ?? 3;
     w.exam = {continuous: 4, any: 1, finals: 0}[answers.exams] ?? 2;
     if (answers.schedule === "compact") Object.assign(w, {days: 5, hours: 4, gaps: 4});
     if (answers.schedule === "any") Object.assign(w, {days: 1, hours: 1, gaps: 1});
-    const lang = answers.english === false ? "" : "English";
-    const pool = model.courses.filter((c) => !c.skills && (!lang || c.l.includes(lang)) && c.e >= 3 && !keep[c.id]);
+    const window = WINDOWS[answers.window] || WINDOWS.any;
+    return {weights: w, topics, lang: answers.english === false ? "" : "English", ...window, off: DAYOFF[answers.dayoff] || []};
+  }
+
+  /** Courses still compatible with the answers given so far (the wizard's live counter). */
+  function stillInTheRunning(answers, model, E) {
+    const s = settingsFor(answers);
+    return model.courses.filter((c) => !c.skills && (!s.lang || c.l.includes(s.lang))
+      && (answers.maths !== "avoid" || c.m <= 3.5)
+      && (!s.topics.length || topicScore(c, s.topics) > 0)
+      && c.groups.some((g) => E.groupAllowed(g, s))).length;
+  }
+
+  /**
+   * answers = {topics, maths: avoid|ok|love, exams: continuous|any|finals, window: late|day|any,
+   *            dayoff: fri|mon|none, schedule: compact|balanced|any, english: bool}
+   * Returns settings plus a shortlist proposal (4 Want + 6 Backup) ranked by topic relevance and match,
+   * skipping courses in `exclude` (for "swap picks") and courses with no group that fits the constraints.
+   */
+  function planForMe(answers, model, E, keep = {}, exclude = new Set()) {
+    const s = settingsFor(answers);
+    const w = s.weights;
+    const pool = model.courses.filter((c) => !c.skills && (!s.lang || c.l.includes(s.lang)) && c.e >= 3 && !keep[c.id] && !exclude.has(c.id)
+      && c.groups.some((g) => E.groupAllowed(g, s)));
     const ranked = pool.map((c) => {
-      const rel = topicScore(c, topics);
+      const rel = topicScore(c, s.topics);
       const mathsPenalty = answers.maths === "avoid" && c.m > 3.5 ? 0.4 : 0;
-      return {c, s: (topics.length ? rel * 0.6 : 0) + E.courseMatch(c, w) / 100 * 0.4 - mathsPenalty};
+      return {c, s: (s.topics.length ? rel * 0.6 : 0) + E.courseMatch(c, w) / 100 * 0.4 - mathsPenalty};
     }).sort((a, b) => b.s - a.s);
     const picks = [], seen = new Set(Object.keys(keep).flatMap((id) => [model.courses[id]?.fam, norm(model.courses[id]?.n)]));
     for (const r of ranked) {
@@ -223,13 +244,27 @@
       picks.push(r.c);
       if (picks.length >= 10) break;
     }
-    return {
-      weights: w, lang,
-      shortlist: picks.map((c, i) => ({id: c.id, status: i < 4 ? "want" : "backup"})),
-    };
+    return {...s, shortlist: picks.map((c, i) => ({id: c.id, status: i < 4 ? "want" : "backup"}))};
   }
 
-  const api = {TOPICS, DEFINITIONS, createTools, planForMe, topicScore, queryScore, WEEKDAYS};
+  /** Short, human reasons a course was picked: the facts that make it stand out. */
+  function explainPick(c, topics = []) {
+    const out = [];
+    const hit = topics.find((k) => topicScore(c, [k]) > 0);
+    if (hit) out.push(TOPICS[hit].label.toLowerCase());
+    if (c.ex === 0) out.push("no final exam");
+    else if (c.ex != null && c.ex <= 40) out.push(`final exam only ${c.ex}%`);
+    else if (c.ex != null && c.ex >= 70) out.push(`${c.ex}% rides on the final`);
+    if (c.m <= 1.6) out.push("barely any maths");
+    else if (c.m >= 4) out.push("maths-heavy");
+    if (c.h >= 4.3) out.push("very hands-on");
+    if (c.a >= 4.5) out.push("deep in AI & software");
+    if (c.hrs <= 2.6) out.push(`only ${c.hrs.toFixed(1)} h a week`);
+    if (c.rec) out.push("past exchange students liked it");
+    return out.slice(0, 4);
+  }
+
+  const api = {TOPICS, DEFINITIONS, createTools, planForMe, settingsFor, stillInTheRunning, explainPick, topicScore, queryScore, WEEKDAYS};
   root.PlannerTools = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

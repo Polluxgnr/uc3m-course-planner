@@ -56,7 +56,7 @@ All values are clamped to [0, 1].
 
 ## Search
 
-Depth-first branch and bound over the candidates (your shortlist plus, optionally, the 18 best-matching
+Depth-first branch and bound over the candidates (your shortlist plus, optionally, the 14 best-matching
 other courses; skills courses are never auto-added). Must and Want courses come first, then candidates in
 order of match. Each course branches on its allowed groups, and on "skip" unless it's a Must.
 
@@ -107,3 +107,37 @@ original score. The plan header shows coverage as "4/5 courses with a good fallb
   remove it.
 - **Teaching language** is inferred per group from the degree variants the group serves.
 - **Exam dates** aren't modelled; only the share of the grade that comes from the final exam is.
+
+## Assistants on top of the model
+
+Both assistants only change *inputs* (shortlist, weights, constraints). The optimiser above always decides
+what is feasible.
+
+**Plan it for me** (`tools.js`, no network):
+
+- **Answers become settings.** The seven answers map to weights and hard constraints: start time, free
+  day, language.
+- **Ranking.** Candidates are ranked by `0.6 × topic relevance + 0.4 × match`, where relevance comes from
+  bilingual topic vocabularies matched against names, syllabus text and insights. Maths-heavy courses are
+  penalised when the student wants light maths. Courses with no group that fits the constraints are dropped.
+- **Picks.** The top 10 distinct courses become 4 Want and 6 Backup. "Swap" excludes the current Want picks
+  and re-ranks.
+- **Reasons.** Each pick's reasons (`explainPick`) are read from the data: final-exam share, maths, hands-on,
+  AI focus, weekly hours.
+
+**AI advisor** (`advisor.js`):
+
+- **Loop.** A standard tool-calling loop (at most 10 rounds) against any tool-capable OpenRouter model.
+- **Tools.** Six tools: `get_state`, `search_courses`, `get_course`, `update_shortlist`, `set_preferences`,
+  `build_plans`. Their arguments are validated and clamped in `tools.js`, and every tool is unit-tested.
+- **Prompt rules.** The system prompt makes the model ask about goals first, never invent courses, and
+  always call `build_plans` before recommending a plan.
+- **History.** Conversation history is trimmed at user turns so no tool result is ever orphaned from its
+  call.
+
+**Course insights** (`insights.py`, offline):
+
+- **Generation.** One request per course with the syllabus excerpt and the heuristic scores, asking for
+  strict JSON: summary, learn, useful, tools, watch.
+- **Validation.** Replies are parsed and validated; a bad reply is retried once.
+- **Caching.** Results are cached by a hash of model and prompt, so re-runs only pay for changed syllabi.

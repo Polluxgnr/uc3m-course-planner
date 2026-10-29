@@ -29,7 +29,9 @@
     const id = ++jobId;
     const local = () => setTimeout(() => resolve({id, result: E.solve(model, opts)}), 30);
     if (!worker) return local();
-    pending.set(id, (result) => (result ? resolve({id, result}) : local()));
+    // watchdog: a worker that never answers (blocked, suspended, crashed) must not leave the page searching forever
+    const timer = setTimeout(() => { if (pending.delete(id)) { worker = null; local(); } }, (opts.timeBudgetMs || 8000) + 4000);
+    pending.set(id, (result) => { clearTimeout(timer); if (result) resolve({id, result}); else local(); });
     worker.postMessage({type: "solve", id, opts});
   });
 
@@ -103,7 +105,35 @@
     $("short").innerHTML = ids.length ? ids.map(([id, s]) => {
       const c = C[id];
       return `<div class="sitem"><span class="pill ${s}">${s}</span><span class="nm" data-open="${id}" title="${esc(c.n)}">${esc(c.n)}</span><span class="ects">${c.e}</span><button class="x" type="button" data-rm="${id}" aria-label="Remove ${esc(c.n)}">✕</button></div>`;
-    }).join("") : `<div class="empty" style="padding:6px 0">Nothing shortlisted yet. Mark courses in the catalog, use <b>Plan it for me</b>, or ask the advisor. With an empty list the optimiser picks from the best matches.</div>`;
+    }).join("") : `<div class="empty" style="padding:6px 0">Empty for now. Mark courses in the catalog, hit <b>Plan it for me</b>, or ask the advisor. Leave it empty and the optimiser picks from your best matches anyway.</div>`;
+    $("heatblock").innerHTML = shortlistHeat(ids.map(([id]) => C[id]));
+  }
+
+  // When could the shortlisted courses meet? Darker = more of them have a group in that slot.
+  function shortlistHeat(courses) {
+    if (!courses.length) return "";
+    const start = 9 * 60, end = 21 * 60, step = 30, rows = (end - start) / step;
+    const cells = Array.from({length: 5}, () => Array.from({length: rows}, () => new Set()));
+    for (const c of courses) for (const g of c.groups) {
+      if (!groupOK(g)) continue;
+      for (const s of g.s) {
+        if (s[0] > 4) continue;
+        for (let t = Math.max(start, s[1]); t < Math.min(end, s[2]); t += step) cells[s[0]][Math.floor((t - start) / step)].add(c.n);
+      }
+    }
+    const max = Math.max(1, ...cells.flat().map((x) => x.size));
+    const empty = [0, 1, 2, 3, 4].filter((d) => cells[d].every((x) => !x.size));
+    let h = `<div class="row between"><h4 class="lbl" style="margin:0">When your shortlist meets</h4><span class="fb">${empty.length ? `Nothing on ${empty.map((d) => DAYS[d]).join(" & ")}` : "Every weekday is in play"}</span></div><div class="heat" role="img" aria-label="Weekly heat map of when shortlisted courses can meet">`;
+    h += `<span></span>${DAYS.slice(0, 5).map((d) => `<span class="hd">${d}</span>`).join("")}`;
+    for (let r = 0; r < rows; r++) {
+      const t = start + r * step;
+      h += `<span class="hr">${t % 60 ? "" : fmt(t)}</span>`;
+      for (let d = 0; d < 5; d++) {
+        const set = cells[d][r];
+        h += `<span class="hc" style="--a:${(set.size / max).toFixed(2)}" title="${DAYS[d]} ${fmt(t)} · ${set.size ? [...set].map(esc).join(", ") : "nothing"}"></span>`;
+      }
+    }
+    return h + `</div><p class="fb" style="margin:0">Darker means more of your courses could be in class then. Pale columns are where a free day can come from.</p>`;
   }
 
   // ---------------------------------------------------------------- map
@@ -111,7 +141,7 @@
     const W = 640, H = 400, L = 40, R = 12, Tp = 12, B = 36;
     const X = (v) => L + (v - 1) / 4 * (W - L - R), Y = (v) => Tp + (5 - v) / 4 * (H - Tp - B);
     const visible = new Set(filtered(true).map((c) => c.id));
-    const jitter = (id, k) => (((id * 9301 + 49297 * k) % 233280) / 233280 - 0.5) * 11;
+    const jitter = (id, k) => (((id * 9301 + 49297 * k) % 233280) / 233280 - 0.5) * (k === 1 ? 18 : 11);   // ties on the maths axis are common
     const tone = (a) => `var(--seq${Math.min(4, Math.floor((a - 1) / 0.8001))})`;
     let s = "";
     for (let v = 1; v <= 5; v++) {
@@ -123,7 +153,7 @@
     const order = C.filter((c) => !c.skills).sort((a, b) => (!!st.status[a.id]) - (!!st.status[b.id]) || a.rec - b.rec);
     for (const c of order) {
       const x = X(c.m) + jitter(c.id, 1), y = Y(c.h) + jitter(c.id, 2), r = c.e >= 6 ? 6 : 4.5, on = visible.has(c.id);
-      s += `<circle class="dot ${st.status[c.id] || ""} ${on ? "" : "dim"}" data-open="${c.id}" tabindex="${on ? 0 : -1}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="${tone(c.a)}"><title>${esc(c.n)} · maths ${c.m} · hands-on ${c.h} · AI ${c.a} · ${c.e} ECTS</title></circle>`;
+      s += `<circle class="dot ${st.status[c.id] || ""} ${on ? "" : "dim"}" data-open="${c.id}" tabindex="${on ? 0 : -1}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="${tone(c.a)}" aria-label="${esc(c.n)}"></circle>`;
       if (c.rec && on) s += `<circle class="rec" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r + 4}"></circle><text class="reclbl" x="${(x + r + 7).toFixed(1)}" y="${(y + 4).toFixed(1)}">${esc(c.n.length > 26 ? c.n.slice(0, 24) + "…" : c.n)}</text>`;
     }
     $("map").innerHTML = s;
@@ -141,7 +171,7 @@
       <div class="fb">${g.deg.map(degShort).join(", ")} · code ${g.code.join("/")}${groupOK(g) ? "" : ' · <span class="warn">excluded by your language, hours or free days</span>'}</div></div>`).join("");
     $("drawer").innerHTML = `<button class="btn ghost close" id="dclose" type="button" aria-label="Close details">✕</button>
       <header><h2>${esc(c.n)}</h2><div class="meta" style="margin-top:6px"><span>${esc(c.es)}</span>${c.rec ? '<span class="star">★ recommended by past exchange students</span>' : ""}</div></header>
-      <div class="row between">${segButtons(c)}${c.syl ? `<a href="${esc(c.syl)}" target="_blank" rel="noopener">Official syllabus ↗</a>` : ""}</div>
+      <div class="row between">${segButtons(c)}<div class="row"><button class="btn small" type="button" data-compare="${c.id}" aria-pressed="${compare.includes(c.id)}">${compare.includes(c.id) ? "✓ Comparing" : "+ Compare"}</button>${c.syl ? `<a href="${esc(c.syl)}" target="_blank" rel="noopener">Syllabus ↗</a>` : ""}</div></div>
       <div class="meta"><span class="ects">${c.e} ECTS</span><span>Year ${c.y.join(", ")}</span>${langTags(c.l)}<span>${esc(c.dept)}</span></div>
       <div class="meta"><span class="match">match ${c.match}</span>${bar("a", "AI", c.a)}${bar("h", "hands-on", c.h)}${bar("m", "maths", c.m)}<span>labs ${Math.round(c.lab * 100)}% of class time</span></div>
       ${ins ? `<section class="insight"><div class="kicker">AI summary of the syllabus</div><p>${esc(ins.summary)}</p>
@@ -160,13 +190,76 @@
     $("dclose").focus();
   }
 
+  // ---------------------------------------------------------------- map hover card
+  function showTip(c, evt) {
+    const tip = $("tip"), box = $("map").parentElement.getBoundingClientRect();
+    tip.innerHTML = `<b>${esc(c.n)}</b><span class="fb">${c.e} ECTS · year ${c.y.join(", ")} · exam ${c.ex ?? "?"}%</span><p>${esc(summaryOf(c).slice(0, 140))}${summaryOf(c).length > 140 ? "…" : ""}</p><div class="meta">${bar("a", "AI", c.a)}${bar("h", "hands-on", c.h)}${bar("m", "maths", c.m)}</div>`;
+    tip.hidden = false;
+    const x = evt.clientX - box.left, y = evt.clientY - box.top, tw = tip.offsetWidth, th = tip.offsetHeight;
+    tip.style.left = `${Math.max(8, Math.min(box.width - tw - 8, x + 14))}px`;
+    tip.style.top = `${y + th + 24 > box.height ? y - th - 12 : y + 14}px`;
+  }
+
+  // ---------------------------------------------------------------- radar (plan profiles)
+  function radar() {
+    if (!plans.length) return "";
+    const R = 110, cx = 150, cy = 140, n = CRITERIA.length;
+    const pt = (i, v) => { const a = -Math.PI / 2 + i * 2 * Math.PI / n; return [cx + Math.cos(a) * R * v, cy + Math.sin(a) * R * v]; };
+    let s = "";
+    for (const ring of [0.25, 0.5, 0.75, 1]) s += `<polygon class="ring" points="${CRITERIA.map((_, i) => pt(i, ring).join(",")).join(" ")}"></polygon>`;
+    CRITERIA.forEach((c, i) => {
+      const [x, y] = pt(i, 1), [lx, ly] = pt(i, 1.18);
+      s += `<line class="spoke" x1="${cx}" y1="${cy}" x2="${x}" y2="${y}"></line><text x="${lx}" y="${ly + 4}" text-anchor="${Math.abs(lx - cx) < 8 ? "middle" : lx > cx ? "start" : "end"}" class="${st.w[c.k] ? "" : "off"}">${esc(c.label)}</text>`;
+    });
+    plans.forEach((q, k) => {
+      const pts = CRITERIA.map((c, i) => pt(i, Math.max(0.02, q.mt.vals[c.k])).join(",")).join(" ");
+      s += `<polygon class="shape ${k === cur ? "cur" : ""}" data-tab="${k}" points="${pts}" style="--pc:var(--p${k})"><title>Plan ${"ABC"[k]} · ${Math.round(q.score)}</title></polygon>`;
+    });
+    return `<div><h4>Plan profiles</h4><svg class="radar" viewBox="-75 -8 450 300" role="img" aria-label="Radar chart of the plans across the nine criteria">${s}</svg>
+      <div class="legend">${plans.map((q, k) => `<button type="button" class="key ${k === cur ? "on" : ""}" data-tab="${k}"><i style="background:var(--p${k})"></i>Plan ${"ABC"[k]}</button>`).join("")}<span>Further out is better</span></div></div>`;
+  }
+
+  // ---------------------------------------------------------------- compare courses
+  let compare = [];
+  function toggleCompare(id) {
+    id = Number(id);
+    compare = compare.includes(id) ? compare.filter((x) => x !== id) : [...compare, id].slice(-3);
+    renderTray();
+    if (!$("drawer").hidden) openCourse(id);
+  }
+  function renderTray() {
+    $("tray").hidden = !compare.length;
+    $("tray").innerHTML = `<span class="lbl">Compare</span>${compare.map((id) => `<span class="tag">${esc(C[id].n.slice(0, 28))}</span>`).join("")}
+      <button class="btn small primary" type="button" id="cmpOpen" ${compare.length < 2 ? "disabled" : ""}>${compare.length < 2 ? "Pick one more" : "Compare " + compare.length}</button><button class="btn ghost small" type="button" id="cmpClear">Clear</button>`;
+  }
+  function openCompare() {
+    const cs = compare.map((id) => C[id]);
+    const best = (vals, dir) => (dir > 0 ? Math.max(...vals) : Math.min(...vals));
+    const rows = [
+      ["Match for you", (c) => c.match, (v) => v, 1], ["ECTS", (c) => c.e, (v) => v, 0], ["AI & software", (c) => c.a, (v) => v.toFixed(1), 1],
+      ["Hands-on", (c) => c.h, (v) => v.toFixed(1), 1], ["Maths load", (c) => c.m, (v) => v.toFixed(1), -1],
+      ["Final exam", (c) => c.ex ?? 50, (v) => v + "%", -1], ["Class hours / week", (c) => c.hrs, (v) => v.toFixed(1), -1],
+      ["Groups that fit you", (c) => c.groups.filter(groupOK).length, (v) => v, 1],
+    ];
+    $("compareDlg").innerHTML = `<div class="wz"><div class="row between"><h2>Side by side</h2><button class="btn ghost" type="button" data-close="compareDlg" aria-label="Close">✕</button></div>
+      <div class="scroll"><table class="cmp cmpwide"><thead><tr><th></th>${cs.map((c) => `<th><a href="#" data-open="${c.id}" data-close="compareDlg">${esc(c.n)}</a></th>`).join("")}</tr></thead><tbody>
+      ${rows.map(([label, f, show, dir]) => { const vals = cs.map(f), top = dir ? best(vals, dir) : null;
+        return `<tr><td>${label}</td>${vals.map((v) => `<td class="${dir && v === top && new Set(vals).size > 1 ? "win" : ""}">${show(v)}</td>`).join("")}</tr>`; }).join("")}
+      <tr><td>In a sentence</td>${cs.map((c) => `<td class="txt">${esc(summaryOf(c))}</td>`).join("")}</tr>
+      <tr><td>You'll learn</td>${cs.map((c) => `<td class="txt">${c.ins && c.ins.learn ? c.ins.learn.map(esc).join("<br>") : `<span class="muted">${esc((c.cont || "").slice(0, 160))}…</span>`}</td>`).join("")}</tr>
+      </tbody></table></div>
+      <div class="foot"><span class="fb">Highlighted: the best value in each row.</span><div class="row">${cs.map((c) => segButtons(c)).join("")}</div></div></div>`;
+    $("compareDlg").showModal();
+  }
+
   // ---------------------------------------------------------------- plans
   const colorOf = (i) => `var(--c${i % 10})`;
   function renderStatus() {
-    if (searching) { $("status").innerHTML = `<span class="spin" aria-hidden="true"></span> Searching every clash-free combination…`; return; }
+    if (searching) { $("status").innerHTML = `<span class="spin" aria-hidden="true"></span> Trying every clash-free combination…`; return; }
     if (!stats) { $("status").textContent = ""; return; }
-    $("status").innerHTML = `${stats.nodes.toLocaleString("en")} partial plans in ${(stats.ms / 1000).toFixed(1)} s · ${stats.candidates} candidate courses · ` +
-      (stats.complete ? "<b>exhaustive</b>: these are the best plans for your settings" : "time limit reached: best plans found so far");
+    const took = stats.ms < 100 ? "under 0.1 s" : `${(stats.ms / 1000).toFixed(1)} s`;
+    $("status").innerHTML = `<span>Checked ${stats.nodes.toLocaleString("en")} combinations of ${stats.candidates} courses in ${took}. ` +
+      (stats.complete ? "<b>Exhaustive</b>: nothing beats these three for your settings.</span>" : "Hit the time limit, so these are the best found so far.</span>");
   }
   function renderMeter() {
     const p = plans[0];
@@ -179,7 +272,7 @@
     const p = plans[cur];
     let h = problems.length ? `<p class="warn">${problems.map(esc).join("<br>")}</p>` : "";
     if (!p) {
-      $("plan").innerHTML = h + (searching ? "" : `<div class="empty" style="padding:0">No plan reaches ${st.target} ECTS with these settings. Add Backup courses, widen the hours, free fewer days or let the optimiser add courses.</div>`);
+      $("plan").innerHTML = h + (searching ? "" : `<div class="empty" style="padding:0">No combination reaches ${st.target} ECTS with these settings. Something has to give: add Backup courses, widen your hours, free fewer days, or let the optimiser add courses.</div>`);
       return;
     }
     const mt = p.mt, rb = p.robust;
@@ -192,8 +285,8 @@
         <div class="stat"><b>${mt.off.length ? mt.off.map((d) => DAYS[d]).join(" ") : "–"}</b><small>weekday${mt.off.length === 1 ? "" : "s"} without class</small></div>
         ${rb ? `<div class="stat"><b class="${rb.covered === rb.total ? "okc" : ""}">${rb.covered}/${rb.total}</b><small>courses with a good fallback</small></div>` : ""}
       </div></div>`;
-    h += `<div><h4>Why this score</h4><div class="why">${CRITERIA.map((c) => `<span class="${st.w[c.k] ? "" : "w0"}" title="${esc(c.desc)}">${c.label} ×${st.w[c.k]}</span><span class="track" title="${Math.round(mt.vals[c.k] * 100)}% of the best possible"><b style="width:${Math.round(mt.vals[c.k] * 100)}%"></b></span><span class="val">${raw[c.k]}</span>`).join("")}</div>
-      ${p.e > st.target ? `<p class="fb" style="margin-top:6px">−${((p.e - st.target) * E.EXCESS_PENALTY).toFixed(1)} points for ${p.e - st.target} ECTS above the target.</p>` : ""}</div>`;
+    h += `<div class="whygrid"><div><h4>Why this score</h4><div class="why">${CRITERIA.map((c) => `<span class="${st.w[c.k] ? "" : "w0"}" title="${esc(c.desc)}">${c.label} ×${st.w[c.k]}</span><span class="track" title="${Math.round(mt.vals[c.k] * 100)}% of the best possible"><b style="width:${Math.round(mt.vals[c.k] * 100)}%"></b></span><span class="val">${raw[c.k]}</span>`).join("")}</div>
+      ${p.e > st.target ? `<p class="fb" style="margin-top:6px">−${((p.e - st.target) * E.EXCESS_PENALTY).toFixed(1)} points for ${p.e - st.target} ECTS above the target.</p>` : ""}</div>${radar()}</div>`;
     if (plans.length > 1) {
       const rows = [["Score", (q) => q.score, (v) => Math.round(v), 1], ["Courses", (q) => q.mt.n, (v) => v, -1],
         ["AI & software (1–5)", (q) => q.mt.ai, (v) => v.toFixed(1), 1], ["Maths (1–5)", (q) => q.mt.maths, (v) => v.toFixed(1), -1],
@@ -293,61 +386,109 @@
 
   // ---------------------------------------------------------------- wizard (no key needed)
   const WZ = [
-    {key: "topics", title: "What do you want to get out of this semester?", hint: "Pick up to three.", multi: 3,
+    {key: "topics", title: "What are you actually here for?", hint: "Pick up to three. Nobody's judging.", multi: 3,
       options: Object.entries(T.TOPICS).map(([k, t]) => ({v: k, label: t.label}))},
-    {key: "maths", title: "How do you feel about maths-heavy courses?", options: [
-      {v: "avoid", label: "Keep it light", sub: "Prefer applied, practical courses"}, {v: "ok", label: "Some is fine", sub: "If the course is worth it"},
-      {v: "love", label: "Bring it on", sub: "Theory doesn't scare me"}]},
-    {key: "exams", title: "How do you prefer to be graded?", options: [
-      {v: "continuous", label: "Continuous work", sub: "Projects, labs, assignments"}, {v: "any", label: "No preference", sub: ""},
-      {v: "finals", label: "Final exams", sub: "One big push at the end"}]},
-    {key: "schedule", title: "What should your week look like?", options: [
-      {v: "compact", label: "Compact", sub: "Fewer days on campus, few gaps"}, {v: "balanced", label: "Balanced", sub: "Some structure, no extremes"},
-      {v: "any", label: "Doesn't matter", sub: "Content first"}]},
-    {key: "english", title: "Which teaching language works for you?", options: [
-      {v: true, label: "English only", sub: ""}, {v: false, label: "English or Spanish", sub: "I'm comfortable in Spanish"}]},
+    {key: "maths", title: "Maths. Be honest.", options: [
+      {v: "avoid", label: "Keep it far away", sub: "Integrals and I broke up."}, {v: "ok", label: "Small doses", sub: "If the course is worth it."},
+      {v: "love", label: "Bring the proofs", sub: "I miss Calculus II, weirdly."}]},
+    {key: "exams", title: "How do you like to be graded?", hint: "Some people love a 70% final. They're rare.", options: [
+      {v: "continuous", label: "Steady work", sub: "Labs, projects, no single make-or-break day."}, {v: "any", label: "Don't care", sub: "Grades are grades."},
+      {v: "finals", label: "One big final", sub: "I perform under pressure."}]},
+    {key: "window", title: "When does your brain switch on?", options: [
+      {v: "late", label: "Not before 10:45", sub: "9:00 classes? Hard pass."}, {v: "day", label: "Daytime only", sub: "Done by 19:00, there's a life after class."},
+      {v: "any", label: "Whenever", sub: "9:00 to 21:00, I'm flexible."}]},
+    {key: "dayoff", title: "Long weekends?", hint: "You're on exchange. Spain has a lot of trains.", options: [
+      {v: "fri", label: "Fridays off", sub: "Obviously."}, {v: "mon", label: "Mondays off", sub: "Slow starts are a lifestyle."},
+      {v: "none", label: "No need", sub: "I like a routine."}]},
+    {key: "schedule", title: "How packed can the week be?", options: [
+      {v: "compact", label: "Tight", sub: "Fewer days on campus, no dead time."}, {v: "balanced", label: "Balanced", sub: "Structure without extremes."},
+      {v: "any", label: "Content over comfort", sub: "I'll go where the good courses are."}]},
+    {key: "english", title: "Teaching language?", options: [
+      {v: true, label: "English only", sub: "Keep it simple."}, {v: false, label: "English or Spanish", sub: "¡Vamos! More choice."}]},
   ];
-  let wzStep = 0, wzAnswers = {topics: []};
+  let wzStep = 0, wzAnswers = {topics: []}, wzResult = null, wzSeen = new Set();
+  const runningCount = () => T.stillInTheRunning(wzAnswers, model, E);
+  function verdict(a) {
+    const bits = [];
+    const topics = a.topics.map((k) => T.TOPICS[k].label.split(" & ")[0]);
+    const head = topics.length ? `${topics.join(" + ")} semester` : "A well-rounded semester";
+    if (a.maths === "avoid") bits.push("light on maths");
+    if (a.exams === "continuous") bits.push("graded as you go");
+    if (a.dayoff === "fri") bits.push("Fridays free");
+    if (a.dayoff === "mon") bits.push("Mondays free");
+    if (a.window === "late") bits.push("no early mornings");
+    return head + (bits.length ? `, ${bits.join(", ")}` : "") + ".";
+  }
   function renderWizard() {
-    const q = WZ[wzStep], dlg = $("wizard");
+    const dlg = $("wizard");
+    if (wzResult) return renderWizardResult();
+    const q = WZ[wzStep];
     const chosen = (v) => (q.multi ? wzAnswers.topics.includes(v) : wzAnswers[q.key] === v);
     dlg.innerHTML = `<form class="wz" method="dialog">
       <div class="progress">${WZ.map((_, i) => `<span class="${i <= wzStep ? "on" : ""}"></span>`).join("")}</div>
-      <div><p class="eyebrow">Step ${wzStep + 1} of ${WZ.length} · no account or key needed</p><h2>${esc(q.title)}</h2>${q.hint ? `<p class="muted" style="margin:6px 0 0">${q.hint}</p>` : ""}</div>
+      <div class="row between"><p class="eyebrow" style="margin:0">Question ${wzStep + 1} of ${WZ.length}</p><p class="counter"><b>${runningCount()}</b> courses still in the running</p></div>
+      <div class="q"><h2>${esc(q.title)}</h2>${q.hint ? `<p class="muted" style="margin:6px 0 0">${q.hint}</p>` : ""}</div>
       <div class="grid">${q.options.map((o, i) => `<button type="button" class="choice" data-i="${i}" aria-pressed="${chosen(o.v)}"><b>${esc(o.label)}</b>${o.sub ? `<small>${esc(o.sub)}</small>` : ""}</button>`).join("")}</div>
-      <div class="foot"><button type="button" class="btn ghost" data-wz="${wzStep ? "back" : "close"}">${wzStep ? "Back" : "Cancel"}</button>
-        <button type="button" class="btn primary" data-wz="next">${wzStep === WZ.length - 1 ? "Build my plan" : "Next"}</button></div></form>`;
+      <div class="foot"><button type="button" class="btn ghost" data-wz="${wzStep ? "back" : "close"}">${wzStep ? "← Back" : "Cancel"}</button>
+        ${q.multi || wzSeen.has(wzStep) ? `<button type="button" class="btn primary" data-wz="next">${wzStep === WZ.length - 1 ? "Show me" : "Next →"}</button>` : `<span class="fb">Pick one to continue</span>`}</div></form>`;
   }
-  function openWizard() { wzStep = 0; wzAnswers = {topics: [], maths: "ok", exams: "any", schedule: "balanced", english: st.lang !== ""}; renderWizard(); $("wizard").showModal(); }
+  function renderWizardResult() {
+    const r = wzResult;
+    const constraints = [r.off.length ? `${r.off.map((d) => DAYS[d]).join(" & ")} kept free` : null, r.early !== "09:00" ? `nothing before ${r.early}` : null,
+      r.late !== "21:00" ? `done by ${r.late}` : null, r.lang ? "English groups only" : "English or Spanish"].filter(Boolean);
+    $("wizard").innerHTML = `<div class="wz">
+      <div><p class="eyebrow" style="margin:0">Your semester, drafted</p><h2>${esc(verdict(wzAnswers))}</h2>
+        <div class="row" style="margin-top:8px">${constraints.map((x) => `<span class="tag">${esc(x)}</span>`).join("")}</div></div>
+      <ol class="picks">${r.shortlist.map((x) => { const c = C[x.id];
+        return `<li><span class="pill ${x.status}">${x.status}</span><div><b>${esc(c.n)}</b> <span class="mono muted">${c.e} ECTS</span><div class="fb">${T.explainPick(c, wzAnswers.topics).map(esc).join(" · ") || esc(summaryOf(c).slice(0, 90))}</div></div></li>`; }).join("")}</ol>
+      <p class="fb" style="margin:0">The four <b>Want</b> picks are the priority; the six <b>Backup</b> picks give the optimiser room to dodge clashes and cover full courses.</p>
+      <div class="foot"><button type="button" class="btn ghost" data-wz="edit">← Change answers</button>
+        <div class="row"><button type="button" class="btn" data-wz="swap">Swap the Want picks</button><button type="button" class="btn primary" data-wz="apply">Build my timetable</button></div></div></div>`;
+  }
+  function openWizard() {
+    wzStep = 0; wzResult = null; wzSeen = new Set();
+    wzAnswers = {topics: []};   // unanswered questions fall back to neutral defaults in settingsFor()
+    renderWizard(); $("wizard").showModal();
+  }
+  const keepMust = () => Object.fromEntries(Object.entries(st.status).filter(([, s]) => s === "must"));
   $("wizard").addEventListener("click", (e) => {
     const choice = e.target.closest(".choice"), nav = e.target.closest("[data-wz]");
-    const q = WZ[wzStep];
     if (choice) {
-      const v = q.options[+choice.dataset.i].v;
+      const q = WZ[wzStep], v = q.options[+choice.dataset.i].v;
       if (q.multi) {
         const t = wzAnswers.topics;
         wzAnswers.topics = t.includes(v) ? t.filter((x) => x !== v) : t.length < q.multi ? [...t, v] : t;
-      } else wzAnswers[q.key] = v;
-      renderWizard();
-    } else if (nav) {
-      const a = nav.dataset.wz;
-      if (a === "close") $("wizard").close();
-      else if (a === "back") { wzStep--; renderWizard(); }
-      else if (wzStep < WZ.length - 1) { wzStep++; renderWizard(); }
-      else { $("wizard").close(); applyWizard(); }
+        renderWizard();
+      } else {
+        wzAnswers[q.key] = v; wzSeen.add(wzStep);
+        renderWizard();
+        setTimeout(() => { if (wzStep < WZ.length - 1) { wzStep++; renderWizard(); } else { wzResult = T.planForMe(wzAnswers, model, E, keepMust()); renderWizard(); } }, 220);
+      }
+      return;
     }
+    if (!nav) return;
+    const a = nav.dataset.wz;
+    if (a === "close") $("wizard").close();
+    else if (a === "back") { wzStep--; renderWizard(); }
+    else if (a === "next") { if (wzStep < WZ.length - 1) { wzStep++; renderWizard(); } else { wzResult = T.planForMe(wzAnswers, model, E, keepMust()); renderWizard(); } }
+    else if (a === "edit") { wzResult = null; wzStep = 0; renderWizard(); }
+    else if (a === "swap") {
+      const used = new Set(wzResult.shortlist.filter((x) => x.status === "want").map((x) => x.id));
+      wzResult = T.planForMe(wzAnswers, model, E, keepMust(), used); renderWizard();
+    } else if (a === "apply") { $("wizard").close(); applyWizard(); }
   });
   async function applyWizard() {
-    const keep = Object.fromEntries(Object.entries(st.status).filter(([, s]) => s === "must"));
-    const out = T.planForMe(wzAnswers, model, E, keep);
-    st.status = {...keep};
-    out.shortlist.forEach((x) => { st.status[x.id] = x.status; });
-    st.w = {...out.weights}; st.preset = ""; st.lang = out.lang; st.auto = true;
-    if (wzAnswers.schedule === "compact" && !st.off.length) st.off = [];
+    const r = wzResult;
+    st.status = {...keepMust()};
+    r.shortlist.forEach((x) => { st.status[x.id] = x.status; });
+    Object.assign(st, {w: {...r.weights}, preset: "", lang: r.lang, auto: true, early: r.early, late: r.late, off: [...r.off]});
     save(); syncInputs(); renderSliders(); recomputeMatch(); renderAll();
     Planner.scrollToPlans();
-    await build();
-    toast(`Shortlisted ${out.shortlist.length} courses and built your plans`);
+    const out = await build();
+    const p = out.plans[0];
+    if (!p) return toast("Those constraints were too tight for any plan. Loosen one and try again.");
+    const free = p.mt.off.map((d) => ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"][d]);
+    toast(`Done: ${p.mt.n} courses, ${p.mt.hrs.toFixed(1)} h a week${free.length ? `, and ${free.join(" & ")} ${free.length > 1 ? "are" : "is"} all yours` : ""}.`);
   }
 
   // ---------------------------------------------------------------- controls
@@ -431,9 +572,17 @@
       const t = e.target.closest("[data-tab]");
       if (t) { cur = +t.dataset.tab; renderPlan(); if ($("fits").checked) renderList(); return; }
       if (e.target.closest("#dclose")) { $("drawer").hidden = true; return; }
+      const cmp = e.target.closest("[data-compare]");
+      if (cmp) { toggleCompare(cmp.dataset.compare); return; }
+      if (e.target.closest("#cmpOpen")) { openCompare(); return; }
+      if (e.target.closest("#cmpClear")) { compare = []; renderTray(); return; }
+      const closer = e.target.closest("[data-close]");
+      if (closer) $(closer.dataset.close).close();
       const o = e.target.closest("[data-open]");
       if (o) { e.preventDefault(); openCourse(o.dataset.open); }
     });
+    $("map").addEventListener("mousemove", (e) => { const d = e.target.closest("circle.dot"); if (d) showTip(C[d.dataset.open], e); else $("tip").hidden = true; });
+    $("map").addEventListener("mouseleave", () => { $("tip").hidden = true; });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && !$("drawer").hidden) $("drawer").hidden = true;
       if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches(".course, circle")) { e.preventDefault(); openCourse(e.target.dataset.open); }

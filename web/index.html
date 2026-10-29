@@ -69,6 +69,7 @@
         <div class="panel mapcard">
           <div class="panel-hd"><div class="row between"><h3>Course map</h3><span class="lbl">Click a dot</span></div></div>
           <div class="mapbody">
+            <div class="tip" id="tip" hidden></div>
             <svg id="map" viewBox="0 0 640 400" role="img" aria-label="Courses plotted by maths load and hands-on share; colour shows AI and software focus"></svg>
             <div class="legend"><span>AI &amp; software focus<span class="ramp"><span style="background:var(--seq0)"></span><span style="background:var(--seq1)"></span><span style="background:var(--seq2)"></span><span style="background:var(--seq3)"></span><span style="background:var(--seq4)"></span></span></span><span>Thick ring: shortlisted</span><span>Dashed ring: recommended by past exchange students</span></div>
           </div>
@@ -83,6 +84,7 @@
         <div class="panel">
           <div class="panel-hd"><div class="row between"><h3>Your courses</h3><div class="row"><span class="lbl" id="sCount"></span><button class="btn ghost small" id="clear" type="button">Clear</button></div></div></div>
           <div class="short" id="short"></div>
+          <div class="block heatblock" id="heatblock"></div>
           <div class="block">
             <div class="row between"><h4 class="lbl" style="margin:0">What matters to you</h4>
               <div class="tabs" id="presets" role="group" aria-label="Presets"><button data-preset="balanced" type="button">Balanced</button><button data-preset="focus" type="button">Interest first</button><button data-preset="compact" type="button">Compact week</button></div></div>
@@ -126,6 +128,8 @@
 <aside class="drawer" id="drawer" hidden aria-label="Course details"></aside>
 <aside class="dock" id="dock" hidden aria-label="AI advisor"></aside>
 <dialog class="wizard" id="wizard" aria-label="Plan it for me"></dialog>
+<dialog class="wizard wide" id="compareDlg" aria-label="Compare courses"></dialog>
+<div class="tray" id="tray" hidden></div>
 <div class="toast" id="toast" hidden role="status"></div>
 
 <script src="dataset.js"></script>

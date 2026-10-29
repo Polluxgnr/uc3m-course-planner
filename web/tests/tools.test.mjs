@@ -104,3 +104,29 @@ test("planForMe: AI-minded, maths-averse profile yields relevant low-maths picks
   assert.ok(meanMaths < 3, `mean maths ${meanMaths}`);
   assert.ok(picked.slice(0, 4).every((c) => T.topicScore(c, ["ai", "software"]) > 0));
 });
+
+test("planForMe: time window and free day exclude courses that cannot fit", () => {
+  const api = fakeApi();
+  const out = T.planForMe({topics: ["software"], maths: "ok", exams: "any", window: "late", dayoff: "fri", english: true}, api.model, E);
+  assert.equal(out.early, "10:45");
+  assert.deepEqual(out.off, [4]);
+  for (const x of out.shortlist) assert.ok(api.model.courses[x.id].groups.some((g) => E.groupAllowed(g, out)), api.model.courses[x.id].n);
+});
+
+test("planForMe: swap picks returns different courses", () => {
+  const api = fakeApi();
+  const answers = {topics: ["ai"], maths: "avoid", exams: "continuous", english: true};
+  const first = T.planForMe(answers, api.model, E);
+  const second = T.planForMe(answers, api.model, E, {}, new Set(first.shortlist.slice(0, 4).map((x) => x.id)));
+  const firstWants = new Set(first.shortlist.slice(0, 4).map((x) => x.id));
+  assert.ok(second.shortlist.every((x) => !firstWants.has(x.id)));
+});
+
+test("explainPick and the live counter give sensible output", () => {
+  const api = fakeApi();
+  const mobile = api.model.courses.find((c) => /^Mobile Applications/.test(c.n) && c.e === 6 && c.ex === 0);
+  assert.ok(T.explainPick(mobile, ["software"]).includes("no final exam"));
+  const all = T.stillInTheRunning({english: false}, api.model, E);
+  const narrow = T.stillInTheRunning({topics: ["ai"], maths: "avoid", english: true, window: "late", dayoff: "fri"}, api.model, E);
+  assert.ok(all > narrow && narrow > 0, `${all} > ${narrow} > 0`);
+});
