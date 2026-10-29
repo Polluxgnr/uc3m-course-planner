@@ -6,6 +6,8 @@ import json
 import re
 from pathlib import Path
 
+from .insights import attach
+
 DOC_HEAD = """<!doctype html>
 <html lang="en">
 <head>
@@ -30,9 +32,11 @@ def _inline(page: str, web: Path, dataset: dict) -> str:
     return re.sub(r'<script src="([\w.]+\.js)"></script>', script, page)
 
 
-def build_site(web: Path, dataset_path: Path, out_dir: Path) -> list[Path]:
+def build_site(web: Path, dataset_path: Path, out_dir: Path, insights_path: Path | None = None) -> list[Path]:
     """Write dist/planner.html (page fragment, as the artifact host expects) and dist/index.html (full document)."""
     dataset = json.loads(dataset_path.read_text(encoding="utf-8"))
+    if insights_path and insights_path.exists():
+        attach(dataset, json.loads(insights_path.read_text(encoding="utf-8")))
     fragment = _inline((web / "index.html").read_text(encoding="utf-8"), web, dataset)
     out_dir.mkdir(parents=True, exist_ok=True)
     frag_path, doc_path = out_dir / "planner.html", out_dir / "index.html"

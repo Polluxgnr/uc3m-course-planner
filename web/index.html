@@ -1,88 +1,135 @@
 <title>UC3M Course Planner</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="Plan an exchange semester at UC3M's School of Engineering: browse every course, score them, and build clash-free timetables.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 rx=%273%27 fill=%27%231f6f5c%27/%3E%3Cpath d=%27M4 5h8M4 8h8M4 11h5%27 stroke=%27white%27 stroke-width=%271.5%27/%3E%3C/svg%3E">
+<meta name="description" content="Plan an exchange semester at UC3M's School of Engineering: every course scored from its syllabus, an exact timetable optimiser and an AI advisor.">
+<meta property="og:title" content="UC3M Course Planner">
+<meta property="og:description" content="Every engineering course at UC3M Leganés, scored from its syllabus, with an exact timetable optimiser and an AI advisor.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 rx=%273.5%27 fill=%27%232346d5%27/%3E%3Cpath d=%27M3.5 5h9M3.5 8h9M3.5 11h5.5%27 stroke=%27white%27 stroke-width=%271.6%27 stroke-linecap=%27round%27/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;600;700;800&family=Source+Sans+3:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="styles.css">
 
-<div class="wrap">
-  <header class="top">
-    <div>
-      <h1>UC3M Course Planner</h1>
-      <p class="sub" id="intro"></p>
-      <div class="keydates" id="keydates"></div>
-    </div>
-    <div class="meter"><span class="lbl">Target</span><input id="target" type="number" min="6" max="60" step="1" value="30" style="width:64px"><span class="lbl">ECTS · max</span><input id="maxE" type="number" min="6" max="66" step="1" value="33" style="width:64px"></div>
-  </header>
+<header class="bar">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="UC3M Course Planner, back to top">
+      <svg class="mark" viewBox="0 0 26 26" aria-hidden="true"><rect width="26" height="26" rx="6" fill="var(--accent)"/><path d="M6 8.5h14M6 13h14M6 17.5h8" stroke="var(--accent-ink)" stroke-width="2" stroke-linecap="round"/><rect x="15.5" y="15.5" width="5" height="4" rx="1" fill="var(--hl-want)"/></svg>
+      <span>UC3M Course Planner</span>
+    </a>
+    <nav class="nav" aria-label="Sections"><a href="#explore"><span>01</span>Explore</a><a href="#shortlist"><span>02</span>Shortlist</a><a href="#plans"><span>03</span>Plan</a></nav>
+    <div class="grow"></div>
+    <div class="ectsmeter" title="Best plan's ECTS against your target"><span id="ectsText">– / 30 ECTS</span><span class="track"><b id="ectsBar" style="width:0"></b></span></div>
+    <button class="btn" id="openWizard" type="button"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l1.6 3.6 3.9.4-2.9 2.6.8 3.9L8 10l-3.4 2 .8-3.9-2.9-2.6 3.9-.4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span class="txt">Plan it for me</span></button>
+    <button class="btn primary" id="openAdvisor" type="button"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span class="txt">Advisor</span></button>
+  </div>
+</header>
 
-  <section class="panel" aria-label="Course map">
-    <div class="hd"><div class="row" style="justify-content:space-between"><h2>Course map</h2><span class="lbl">Each dot is a course · click to open</span></div></div>
-    <div class="mapwrap">
-      <svg id="map" viewBox="0 0 760 330" role="img" aria-label="Courses plotted by maths load and hands-on share"></svg>
-      <div class="maplegend">
-        <div><h3>Colour: AI &amp; software focus</h3><div class="ramp"><span style="background:var(--seq0)"></span><span style="background:var(--seq1)"></span><span style="background:var(--seq2)"></span><span style="background:var(--seq3)"></span><span style="background:var(--seq4)"></span></div><div class="row" style="justify-content:space-between;width:160px"><span>low</span><span>high</span></div></div>
-        <div><h3>Rings</h3>Thick ring: on your shortlist. Dashed ring: recommended by past exchange students.</div>
-        <div>Scores run from 1 to 5 relative to the other courses. They're estimated from each syllabus (prerequisites, contents, department, assessment) and the share of lab hours in the timetable. Open a course to check its syllabus.</div>
-      </div>
-    </div>
-  </section>
-
-  <div class="main">
-    <section class="panel" aria-label="Course catalog">
-      <div class="hd">
-        <div class="row" style="justify-content:space-between"><h2>Catalog</h2><span class="lbl" id="count"></span></div>
-        <div class="row"><input id="q" type="search" placeholder="Search name (EN/ES), code or topic" aria-label="Search courses"></div>
-        <div class="row">
-          <select id="deg" aria-label="Degree"><option value="">All degrees</option></select>
-          <select id="lang" aria-label="Language"><option value="English">Taught in English</option><option value="">Any language</option><option value="Spanish">Taught in Spanish</option></select>
-          <select id="sort" aria-label="Sort"><option value="match">Sort: best match</option><option value="a">Sort: most AI &amp; software</option><option value="h">Sort: most hands-on</option><option value="m">Sort: lightest maths</option><option value="ex">Sort: smallest final exam</option><option value="hrs">Sort: fewest hours</option><option value="n">Sort: name</option></select>
-        </div>
-        <div class="row" id="years"></div>
-        <div class="row">
-          <label class="chip"><input type="checkbox" id="maxM"> Maths ≤ 3</label>
-          <label class="chip"><input type="checkbox" id="noEx"> Final exam ≤ 50%</label>
-          <label class="chip"><input type="checkbox" id="hideSkills" checked> Hide skills courses</label>
-          <label class="chip"><input type="checkbox" id="fits"> Fits the current plan</label>
-          <label class="chip"><input type="checkbox" id="mine"> My shortlist</label>
+<main id="top">
+  <div class="wrap">
+    <section class="hero">
+      <div>
+        <p class="eyebrow" id="eyebrow"></p>
+        <h1>Choose your courses with the <span class="hl hl-want">whole timetable</span> in view</h1>
+        <p class="lede" id="intro"></p>
+        <div class="hero-actions">
+          <button class="btn primary" id="heroWizard" type="button">Plan it for me</button>
+          <button class="btn" id="heroAdvisor" type="button">Ask the AI advisor</button>
+          <a class="btn ghost" href="#explore">Browse courses ↓</a>
         </div>
       </div>
-      <div class="list" id="list"></div>
+      <div>
+        <dl class="dates" id="keydates"></dl>
+        <div class="facts" id="facts"></div>
+      </div>
     </section>
 
-    <div class="right">
-      <section class="panel" aria-label="Shortlist and preferences">
-        <div class="hd"><div class="row" style="justify-content:space-between"><h2>Shortlist</h2><div class="row"><span class="lbl" id="sCount"></span><button class="ghostbtn" id="clear">Clear</button></div></div></div>
-        <div class="short" id="short"></div>
-        <div class="model">
-          <div class="row" style="justify-content:space-between"><h3 style="margin:0">What matters to you</h3>
-            <div class="tabs" id="presets"><button data-preset="balanced">Balanced</button><button data-preset="focus">Interest first</button><button data-preset="compact">Compact timetable</button></div></div>
-          <div class="sliders" id="sliders"></div>
+    <section class="step" id="explore" aria-labelledby="exploreTitle">
+      <div class="step-hd"><span class="num">01</span><h2 id="exploreTitle">Explore</h2>
+        <p>Every course taught this semester, scored from its syllabus. Open one to see what you'll learn, how it's graded and when it meets.</p></div>
+      <div class="explore">
+        <div class="panel">
+          <div class="panel-hd filters">
+            <div class="row between"><h3>Catalog</h3><span class="lbl" id="count"></span></div>
+            <input id="q" type="search" placeholder="Search a topic, tool or course: “python”, “android”, “robots”…" aria-label="Search courses">
+            <div class="row">
+              <select id="deg" aria-label="Degree"><option value="">All degrees</option></select>
+              <select id="lang" aria-label="Teaching language"><option value="English">Taught in English</option><option value="">Any language</option><option value="Spanish">Taught in Spanish</option></select>
+              <select id="sort" aria-label="Sort by"><option value="match">Best match for you</option><option value="a">Most AI &amp; software</option><option value="h">Most hands-on</option><option value="m">Lightest maths</option><option value="ex">Smallest final exam</option><option value="hrs">Fewest class hours</option><option value="n">Name</option></select>
+            </div>
+            <div class="row" id="years"></div>
+            <div class="row">
+              <label class="chip"><input type="checkbox" id="maxM"> Maths ≤ 3</label>
+              <label class="chip"><input type="checkbox" id="noEx"> Final exam ≤ 50%</label>
+              <label class="chip"><input type="checkbox" id="fits"> Fits my plan</label>
+              <label class="chip"><input type="checkbox" id="mine"> Shortlisted</label>
+              <label class="chip"><input type="checkbox" id="hideSkills" checked> Hide skills courses</label>
+            </div>
+          </div>
+          <div class="list" id="list"></div>
         </div>
-        <div class="cons">
-          <div><span class="lbl">Earliest start</span><input id="early" type="time" value="09:00" step="900"></div>
-          <div><span class="lbl">Latest end</span><input id="late" type="time" value="21:00" step="900"></div>
-          <div><span class="lbl">Keep these days free</span><div class="row" id="daysOff"></div></div>
-          <div><label class="chip"><input type="checkbox" id="auto" checked> Let the optimiser suggest courses</label></div>
-          <div><button class="primary" id="go">Build plans</button></div>
+        <div class="panel mapcard">
+          <div class="panel-hd"><div class="row between"><h3>Course map</h3><span class="lbl">Click a dot</span></div></div>
+          <div class="mapbody">
+            <svg id="map" viewBox="0 0 640 400" role="img" aria-label="Courses plotted by maths load and hands-on share; colour shows AI and software focus"></svg>
+            <div class="legend"><span>AI &amp; software focus<span class="ramp"><span style="background:var(--seq0)"></span><span style="background:var(--seq1)"></span><span style="background:var(--seq2)"></span><span style="background:var(--seq3)"></span><span style="background:var(--seq4)"></span></span></span><span>Thick ring: shortlisted</span><span>Dashed ring: recommended by past exchange students</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="planner">
+      <section class="step" id="shortlist" aria-labelledby="shortTitle">
+        <div class="step-hd"><span class="num">02</span><h2 id="shortTitle">Shortlist</h2>
+          <p>Mark courses as <span class="hl hl-must">Must</span>, <span class="hl hl-want">Want</span> or <span class="hl hl-backup">Backup</span>, then say what matters.</p></div>
+        <div class="panel">
+          <div class="panel-hd"><div class="row between"><h3>Your courses</h3><div class="row"><span class="lbl" id="sCount"></span><button class="btn ghost small" id="clear" type="button">Clear</button></div></div></div>
+          <div class="short" id="short"></div>
+          <div class="block">
+            <div class="row between"><h4 class="lbl" style="margin:0">What matters to you</h4>
+              <div class="tabs" id="presets" role="group" aria-label="Presets"><button data-preset="balanced" type="button">Balanced</button><button data-preset="focus" type="button">Interest first</button><button data-preset="compact" type="button">Compact week</button></div></div>
+            <div class="sliders" id="sliders"></div>
+          </div>
+          <div class="block">
+            <div class="cons">
+              <div><span class="lbl">Target ECTS</span><input id="target" type="number" min="6" max="60" step="1" style="width:76px"></div>
+              <div><span class="lbl">Max ECTS</span><input id="maxE" type="number" min="6" max="66" step="1" style="width:76px"></div>
+              <div><span class="lbl">Earliest start</span><input id="early" type="time" step="900"></div>
+              <div><span class="lbl">Latest end</span><input id="late" type="time" step="900"></div>
+            </div>
+            <div class="cons">
+              <div><span class="lbl">Keep free</span><div class="row" id="daysOff"></div></div>
+            </div>
+            <div class="row between"><label class="chip"><input type="checkbox" id="auto"> Let the optimiser add courses</label><button class="btn primary" id="go" type="button">Build plans</button></div>
+          </div>
         </div>
       </section>
 
-      <section class="panel" aria-label="Plans">
-        <div class="hd">
-          <div class="row" style="justify-content:space-between"><h2>Plans</h2><div class="row"><label class="chip"><input type="checkbox" id="ghost"> Show other groups</label><button id="copy">Copy plan</button></div></div>
-          <div class="tabs" id="tabs"></div>
-          <div class="status" id="status" role="status"></div>
+      <section class="step" id="plans" aria-labelledby="plansTitle">
+        <div class="step-hd"><span class="num">03</span><h2 id="plansTitle">Plan</h2>
+          <p>The three best clash-free combinations for your settings, each with a fallback for every course.</p></div>
+        <div class="panel">
+          <div class="panel-hd">
+            <div class="row between"><div class="tabs" id="tabs" role="tablist" aria-label="Plans"></div><div class="row"><label class="chip"><input type="checkbox" id="ghost"> Other groups</label><button class="btn small" id="copy" type="button">Copy plan</button></div></div>
+            <div class="status" id="status" role="status" aria-live="polite"></div>
+          </div>
+          <div class="plan" id="plan"></div>
         </div>
-        <div class="plan" id="plan"></div>
-        <p class="note" id="note"></p>
       </section>
     </div>
+
+    <footer class="foot-note">
+      <span id="source"></span>
+      <span>Not affiliated with UC3M · <a href="https://github.com/Polluxgnr/uc3m-course-planner" target="_blank" rel="noopener">Source on GitHub</a> · Built by Pollux Gronier</span>
+    </footer>
   </div>
-</div>
+</main>
+
 <aside class="drawer" id="drawer" hidden aria-label="Course details"></aside>
-<div class="toast" id="toast" hidden></div>
+<aside class="dock" id="dock" hidden aria-label="AI advisor"></aside>
+<dialog class="wizard" id="wizard" aria-label="Plan it for me"></dialog>
+<div class="toast" id="toast" hidden role="status"></div>
 
 <script src="dataset.js"></script>
 <script src="engine.js"></script>
+<script src="tools.js"></script>
 <script src="app.js"></script>
+<script src="advisor.js"></script>

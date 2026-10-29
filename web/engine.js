@@ -216,7 +216,7 @@
     const auto = !opts.auto ? [] : model.courses
       .filter((c) => !status[c.id] && !c.skills && !takenFams.has(c.fam) && (!opts.lang || c.l.includes(opts.lang))
         && c.groups.some((g) => groupAllowed(g, opts)))
-      .sort((x, y) => courseMatch(y, w) - courseMatch(x, w)).slice(0, opts.autoCount ?? 18)
+      .sort((x, y) => courseMatch(y, w) - courseMatch(x, w)).slice(0, opts.autoCount ?? 14)
       .map((c) => ({c, s: "auto"}));
     const rank = {must: 0, want: 1, backup: 2, auto: 3};
     const cands = [...shortlisted, ...auto]
